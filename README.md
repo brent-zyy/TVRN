@@ -2,7 +2,7 @@
 
 ## Introduction
 
-![image-20230821145235797](C:\Users\Administrator\AppData\Roaming\Typora\typora-user-images\image-20230821145235797.png)
+![framework](TVRN/imgs/framework.png)
 
 ## Requirements and Installation
 
@@ -12,7 +12,7 @@ PyTorch	1.8.0
 
 Transformers	4.18.0
 
-Please refer to the （environment.yaml） file for the specific environment
+Please refer to the （[environment.yaml](TVRN/environment.yaml)） file for the specific environment
 
 
 
