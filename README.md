@@ -2,7 +2,7 @@
 
 ## Introduction
 
-![framework](TVRN/imgs/framework.png)
+![framework](./imgs/framework.png)
 
 ## Requirements and Installation
 
@@ -12,7 +12,7 @@ PyTorch	1.8.0
 
 Transformers	4.18.0
 
-Please refer to the （[environment.yaml](TVRN/environment.yaml)） file for the specific environment
+Please refer to the （[environment.yaml](environment.yaml)） file for the specific environment
 
 
 
