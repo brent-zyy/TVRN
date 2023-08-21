@@ -52,7 +52,7 @@ data
 
 
 
-## raining
+## Training
 
 ```
 sh scripts/train.sh
