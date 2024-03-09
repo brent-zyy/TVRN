@@ -2,7 +2,7 @@
 
 ## Introduction
 
-![framework](./imgs/framework.png)
+![framework](./imgs/4_crop.pdf)
 
 ## Requirements and Installation
 
