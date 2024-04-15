@@ -25,13 +25,13 @@ def parse_opt():
                         help='{coco,f30k}_precomp')
     parser.add_argument('--vocab_path', default='./vocab/',
                         help='Path to saved vocabulary json files.')
-    parser.add_argument('--model_name', default='./CON/runs/f30k_SGR_GLO/checkpoint',
+    parser.add_argument('--model_name', default='./runs/f30k_SGR_GLO/checkpoint',
                         help='Path to save the model.')
-    parser.add_argument('--logger_name', default='./CON/runs/f30k_SGR_GLO/glo',
+    parser.add_argument('--logger_name', default='./runs/f30k_SGR_GLO/glo',
                         help='Path to save Tensorboard log.')
     
     # ----------------------- training setting ----------------------#
-    parser.add_argument('--seed',default=114514, type = int, 
+    parser.add_argument('--seed',default=0, type = int, 
                         help = 'Random seed Number')
     parser.add_argument('--gpu_id', default=1, type=int, 
                         help='GPU to use.')
