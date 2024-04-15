@@ -55,7 +55,7 @@ data
 ## Training
 
 ```
-sh scripts/train.sh
+train.py
 ```
 
 
@@ -63,7 +63,7 @@ sh scripts/train.sh
 ## Evaluation
 
 ```
-sh scripts/eval.sh
+evaluation.py
 ```
 
 
