@@ -161,20 +161,18 @@ class VisualSA(nn.Module):
                     m.bias.data.zero_()
 
     def forward(self, local, raw_global):
-        # compute embedding of local regions(batch_size, region_num, emb_size) and raw global image(batch_size, emb_size) 
-        l_emb = self.embedding_local(local) # 带dropout的线性层 batch_norm for region_num 
-        g_emb = self.embedding_global(raw_global) # 带dropout的线性层batch_norm for emb_sieze 
+        l_emb = self.embedding_local(local) 
+        g_emb = self.embedding_global(raw_global)
 
-        # compute the normalized weights, shape: (batch_size, 36)
-        g_emb = g_emb.unsqueeze(1).repeat(1, l_emb.size(1), 1) #(batch_size, region_num, emb_size)
-        common = l_emb.mul(g_emb) #(batch_size, region_num, emb_size) 逐元素相乘
-        weights = self.embedding_common(common).squeeze(2) # (batch_size, region_num)
+        g_emb = g_emb.unsqueeze(1).repeat(1, l_emb.size(1), 1) 
+        common = l_emb.mul(g_emb) 
+        weights = self.embedding_common(common).squeeze(2)
         weights = self.softmax(weights)
 
-        # compute final image, shape: (batch_size, 1024)
+   
         new_global = weights.unsqueeze(2) * local
         new_global = new_global.sum(dim=1)
-        # new_global = (weights.unsqueeze(2) * local).sum(dim=1)
+  
         new_global = l2norm(new_global, dim=-1)
 
         return new_global
@@ -317,11 +315,11 @@ def get_TAposition(depend, lens):
     for j in range(len(depend)):
         dep = depend[j]
         for i, pair in enumerate(dep):
-            if i == 0 or pair[0] >= temlen or pair[1] >= temlen:  # 问题：这里为什么将第一个关系舍去了
+            if i == 0 or pair[0] >= temlen or pair[1] >= temlen: 
                 continue
             adj[j, pair[0], pair[1]] = 1
             adj[j, pair[1], pair[0]] = 1
-        adj[j] = adj[j] + np.eye(temlen)  # 自己到自己的边
+        adj[j] = adj[j] + np.eye(temlen) 
 
     return torch.from_numpy(adj).cuda().float()
 
@@ -372,7 +370,7 @@ class EncoderSimilarity(nn.Module):
         n_image = img_emb.size(0)
         n_caption = cap_emb.size(0)
 
-        # 关系
+
         img_relaemb = self.scan_attention(img_emb, img_emb, smooth=9.0)
 
         weight = Iou.cuda().float()
@@ -386,122 +384,65 @@ class EncoderSimilarity(nn.Module):
         img_positionweight = l2norm(img_positionweight, 2)
         img_positionweight = F.softmax(img_positionweight.permute(0,2,1)*9.0, dim=2)
 
-        # 位置+关系来表示上下文
         img_positionemb = torch.bmm(img_positionweight, img_emb) 
         img_positionemb = l2norm(img_positionemb, dim=-1)
 
-        ## img_con代表区域上下文
         img_con = (img_relaemb + img_positionemb) / 2
         img_con = l2norm(img_con, dim=-1)
 
-        ## 如何让图像的区域学习到周围环境信息？直接做逐元素相乘？还是相加？   先做乘法吧    === 作为高阶信息？
         new_img_emb = l2norm(nn.LeakyReLU(0.1)(img_emb.mul(img_con)), dim=-1)
-        ## 直接把高阶语义和初级语义拼接？
-        # img_emb = l2norm(img_emb + new_img_emb, dim=-1)
-        ## 修改成用cat拼接
-        # img_emb = torch.cat([img_emb, new_img_emb], 1)  # (batch, 72, 1024)
-        img_emb_1 = torch.cat([img_emb, new_img_emb], 1)  # (batch, 72, 1024)
 
-        # 加入GRU的方式
+        img_emb_1 = torch.cat([img_emb, new_img_emb], 1)  
+
         img_emb_2, _ = self.img_rnn(img_emb_1)
         img_emb_3 = torch.cat([img_emb, img_emb], 1)
         img_emb = l2norm(img_emb_2 + img_emb_3, dim=-1)
 
-        # 做消融实验，去掉GRU模块
-        # img_emb = img_emb_1
-
-
-        # ## gru不加低阶语义
-        # img_emb = img_emb_2
-
-        # get enhanced global images by self-attention
         img_ave = torch.mean(img_emb, 1)
-        img_glo = self.v_global_w(img_emb, img_ave)   #(batch, 1, 1024)
+        img_glo = self.v_global_w(img_emb, img_ave)  
 
         for i in range(n_caption):
-            # get the i-th sentence
             n_word = cap_lens[i]
             cap_i = cap_emb[i, :n_word, :].unsqueeze(0)
-            # cap_i_expand = cap_i.repeat(n_image, 1, 1)
 
-            ## cap_inew代表文本上下文   ===     只是单独抽出上下文 
             cap_con = self.scan_attention(cap_i, cap_i, smooth = 9.0)
             cap_con_expand = cap_con.repeat(n_image,1,1)
 
-            # 图像上下文去扩充文本侧信息    === 每个句子都注意了图像上下文，且复制到了batch次   === 有batch个一样的向量
-            # new_cap_i_expand = self.scan_attention(cap_con_expand, img_con,  smooth = 9.0)
             new_cap_i_expand = self.scan_attention(cap_con_expand, img_con,  smooth = 9.0)
-            new_cap_i = new_cap_i_expand[0:1, :, :]       ## 取第一个当作新的扩充的句子（因为batch的向量都一样）
+            new_cap_i = new_cap_i_expand[0:1, :, :]       
 
-            ## 拼接，只需要把两个句子拼接起来就行，所以维度为（1, 2L, 1024） 
             new_cap_i = torch.cat([cap_i, new_cap_i], 1)
 
-            ## 拼接起来的向量要经过一次GRU才能让文本前后都学习到，这样才能使扩充的文本都学习到内容  /   或者直接用self-attention也行，这样也能学习到前后
-            # 此时 new_cap_i 为（1, 2L, 1024）  且每个词都学到了上下文信息，相当于此时的文本同时获得了文本上下文和图像上下文
-            # new_cap_i = self.scan_attention(new_cap_i, new_cap_i, smooth = 9.0) (1,2L,1024)
-            
-            #  GRU单元
             cap_i_2 = torch.cat([cap_i, cap_i], 1)
             cap_i, _ = self.cap_rnn(new_cap_i)
             cap_i = l2norm(cap_i_2 + cap_i, dim=-1)
 
-            # 消融实验，去掉GRU单元
-            # cap_i = new_cap_i
+            cap_i_expand = cap_i.repeat(n_image, 1, 1) 
 
-
-            # ## 修改为cat
-            # cap_i_new, _ = self.cap_rnn(new_cap_i)
-            # cap_i = torch.cat([cap_i, cap_i_new], 1) 
-
-            # ## 修改为 不cat, 直接用 cap_i_new
-            # cap_i = cap_i_new
-
-            cap_i_expand = cap_i.repeat(n_image, 1, 1) ## 扩充到128维。便于后面cross-attention
-
-            # 新的文本向量的全局
-            # cap_ave_i = torch.mean(new_cap_i, 1)
-            # cap_glo_i = self.t_global_w(new_cap_i, cap_ave_i)
             cap_ave_i = torch.mean(cap_i, 1)
             cap_glo_i = self.t_global_w(cap_i, cap_ave_i)
 
-            # 进行匹配
-            # Context_img = self.scan_attention(cap_i_expand, img_emb,  smooth = 9.0)
-            # Context_img = func_attention(cap_i_expand, img_emb,  smooth = 9.0, focal_type= self.focal_type, global_emb=img_glo)
+            Context_img = func_attention(cap_i_expand, img_emb,  smooth = 9.0, focal_type= self.focal_type, global_emb=img_glo)
             
-            # sim_loc = torch.pow(torch.sub(Context_img, cap_i_expand), 2)
-            # sim_loc = l2norm(self.sim_tranloc_w(sim_loc), dim=-1)
+            sim_loc = torch.pow(torch.sub(Context_img, cap_i_expand), 2)
+            sim_loc = l2norm(self.sim_tranloc_w(sim_loc), dim=-1)
 
             sim_glo = torch.pow(torch.sub(img_glo, cap_glo_i), 2)
             sim_glo = l2norm(self.sim_tranglo_w(sim_glo), dim=-1)
 
-            # ## 补充
-            # new_Context_img = self.scan_attention(new_cap_i_expand, new_img_emb,  smooth = 9.0)
-            
-            # new_sim_loc = torch.pow(torch.sub(new_Context_img, new_cap_i_expand), 2)
-            # new_sim_loc = l2norm(self.sim_tranloc_w(new_sim_loc), dim=-1)
+            sim_emb = torch.cat([sim_glo.unsqueeze(1), sim_loc], 1)
 
-
-            #  concat the global and local alignments
-            # sim_emb = torch.cat([sim_glo.unsqueeze(1), sim_loc], 1)
-
-            sim_vec = sim_glo
-            
-            # sim_emb = torch.cat([sim_emb, new_sim_loc], 1)
-
-            # compute the final similarity vector
-            # if self.module_name == 'SGR':
-            #     for module in self.SGR_module:
-            #         sim_emb = module(sim_emb)
-            #     sim_vec = sim_emb[:, 0, :]
-            # else:
-            #     sim_vec = self.SAF_module(sim_emb)
+            if self.module_name == 'SGR':
+                for module in self.SGR_module:
+                    sim_emb = module(sim_emb)
+                sim_vec = sim_emb[:, 0, :]
+            else:
+                sim_vec = self.SAF_module(sim_emb)
             
 
-            # compute the final similarity score
             sim_i = self.sigmoid(self.sim_eval_w(sim_vec))
             sim_all.append(sim_i)
 
-        # (n_image, n_caption)
         sim_all = torch.cat(sim_all, 1)
 
         return sim_all
@@ -530,8 +471,6 @@ class SCAN_attention(nn.Module):
 
 
     def forward(self,query, context, smooth, eps=1e-8):
-        # (batch, sourceL, d)(batch, d, queryL)
-        # --> (batch, sourceL, queryL)
         sim_k = self.fck(context)
         sim_q = self.fcq(query)
         sim_v = context
@@ -550,65 +489,39 @@ class SCAN_attention(nn.Module):
         return weightedContext
 
 def func_attention(query, context, smooth, focal_type = None, eps=1e-8, global_emb = None):
-    """
-    query: (batch, queryL, d)   ==  局部
-    context: (batch, sourceL, d)    ==  局部
-    opt: parameters
-    """
+
     batch_size, queryL, sourceL = context.size(
         0), query.size(1), context.size(1)
 
-    # Step 1: preassign attention
-    # --> (batch, d, queryL)
     queryT = torch.transpose(query, 1, 2)
 
-    # (batch, sourceL, d)(batch, d, queryL) m张图片，n个单词 query 单词， source 图片
     attn = torch.bmm(context, queryT)     
     attn = nn.LeakyReLU(0.1)(attn)
     attn = l2norm(attn, 2)
 
-    # --> (batch, queryL, sourceL)
     attn = torch.transpose(attn, 1, 2).contiguous()
-    # --> (batch*queryL, sourceL)
-    # attn = attn.view(batch_size*queryL, sourceL)
-    # attn = nn.Softmax(dim=1)(attn*20)
-    # --> (batch, queryL, sourceL)
-    # attn = attn.view(batch_size, queryL, sourceL)
+
     attn = F.softmax(attn*smooth, dim=2)
 
-    ## 上面已经得到了attn
-    ## BFAN提出使用一个评分函数 F 来识别与共享语义相关的局部特征，然后将不相关的局部特征从共享语义中去除掉。
-    ## BFAN 给出了两种 g 函数的实现，一种实现是使用 √wit，这个方法被称为 prob, 另一种则是平等对待每一个出现的区域，这种方法被称为 equal。
-
-    # Step 2: identify irrelevant fragments     识别不重要的片段    并标记，重要为1，不重要为0， equal和prob都是两种赋权的方法
-    # Learning an indicator function H, one for relevant, zero for irrelevant
     if focal_type == 'equal':
         funcH = focal_equal(attn, batch_size, queryL, sourceL)
     elif focal_type == 'prob':
         funcH = focal_prob(attn, batch_size, queryL, sourceL)
 
-    ## 做了特征融合，得到新的特征为re_attn
     elif focal_type == 'glo':
         re_attn = focal_glo(attn, query, context, global_emb)
     else:
         raise ValueError("unknown focal attention type:", focal_type)
     
-    # funcH += eps  BFAN的做法
-    # Step 3: reassign attention
+
     if focal_type == 'equal' or focal_type == 'prob':
         tmp_attn = funcH * attn
         attn_sum = torch.sum(tmp_attn, dim=-1, keepdim=True)
         re_attn = tmp_attn / attn_sum
 
-    ### 将融合得到的新的特征去做attn
-    # --> (batch, d, sourceL)
     contextT = torch.transpose(context, 1, 2)
-    # --> (batch, sourceL, queryL)
     re_attnT = torch.transpose(re_attn, 1, 2).contiguous()
-    # (batch x d x sourceL)(batch x sourceL x queryL)
-    # --> (batch, d, queryL)
     weightedContext = torch.bmm(contextT, re_attnT)
-    # --> (batch, queryL, d)
     weightedContext = torch.transpose(weightedContext, 1, 2)
     
     
@@ -617,21 +530,16 @@ def func_attention(query, context, smooth, focal_type = None, eps=1e-8, global_e
     return weightedContext
 
 def focal_glo(attn, query, source, glo):
-    # Todo 加线性层
-    query2glo = torch.bmm(query,glo.unsqueeze(-1))  ## 图像局部注意全局 ==  作为新的图像局部
+    query2glo = torch.bmm(query,glo.unsqueeze(-1)) 
     query2glo = F.softmax(query2glo*9.0,dim=2)
     
-    source2glo = torch.bmm(source,glo.unsqueeze(-1))    ## 文本局部注意全局 ==  作为新的文本局部
+    source2glo = torch.bmm(source,glo.unsqueeze(-1))  
     source2glo = F.softmax(source2glo*9.0, dim=2)
     
     source2gloT = source2glo.transpose(1,2).contiguous()
-    funcF = torch.bmm(query2glo,source2gloT)       ##  再做新的图像区域和文本区域的权重矩阵 
+    funcF = torch.bmm(query2glo,source2gloT)       
     
-    funcF = attn * funcF        ## 相当于做了特征融合
-    # fattn = torch.where(funcF > 0, torch.ones_like(attn),
-    #                     torch.zeros_like(attn))
-    # return fattn
-    # funcF = F.softmax(funcF, dim=2)
+    funcF = attn * funcF       
     return funcF
 
 
@@ -642,9 +550,8 @@ def focal_equal(attn, batch_size, queryL, sourceL):
     sigma_{j} (xi - xj) = sigma_{j} xi - sigma_{j} xj
     attn: (batch, queryL, sourceL)
     """
-    #  torch.sum 得到的是注意力权重在当前文本上的和
     funcF = attn * sourceL - torch.sum(attn, dim=-1, keepdim=True)
-    # 
+
     fattn = torch.where(funcF > 0, torch.ones_like(attn),
                         torch.zeros_like(attn))
     return fattn
@@ -679,43 +586,6 @@ def focal_prob(attn, batch_size, queryL, sourceL):
                         torch.zeros_like(attn))
     return fattn
 
-
-
-
-# class ContrastiveLoss(nn.Module):
-#     """
-#     Compute contrastive loss
-#     """
-#     def __init__(self, margin=0, max_violation=False):
-#         super(ContrastiveLoss, self).__init__()
-#         self.margin = margin
-#         self.max_violation = max_violation
-
-#     def forward(self, scores):
-#         # compute image-sentence score matrix
-#         diagonal = scores.diag().view(scores.size(0), 1)
-#         d1 = diagonal.expand_as(scores)
-#         d2 = diagonal.t().expand_as(scores)
-
-#         # compare every diagonal score to scores in its column
-#         # caption retrieval
-#         cost_s = (self.margin + scores - d1).clamp(min=0)
-#         # compare every diagonal score to scores in its row
-#         # image retrieval
-#         cost_im = (self.margin + scores - d2).clamp(min=0)
-
-#         # clear diagonals
-#         mask = torch.eye(scores.size(0)) > .5
-#         if torch.cuda.is_available():
-#             I = mask.cuda()
-#         cost_s = cost_s.masked_fill_(I, 0)
-#         cost_im = cost_im.masked_fill_(I, 0)
-
-#         # keep the maximum violating negative for each query
-#         if self.max_violation:
-#             cost_s = cost_s.max(1)[0]
-#             cost_im = cost_im.max(0)[0]
-#         return cost_s.sum() + cost_im.sum()
 
 class ContrastiveLoss(nn.Module):
     """
@@ -781,7 +651,6 @@ class SGRAF(object):
             self.img_enc.cuda()
             self.txt_enc.cuda()
             self.sim_enc.cuda()
-            # cudnn.benchmark = True
 
         # Loss and Optimizer
         self.criterion = ContrastiveLoss(margin=opt.margin,
