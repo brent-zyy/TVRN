@@ -7,17 +7,6 @@ def parse_opt():
     # Hyper Parameters
     parser = argparse.ArgumentParser()
     # --------------------------- glo_data path -------------------------#
-    # parser.add_argument('--data_path', default='/apdcephfs/share_1313228/home/haiwendiao',
-    #                     help='path to datasets')
-                        
-    # parser.add_argument('--data_name', default='f30k_precomp',
-    #                     help='{coco,f30k}_precomp')
-    # parser.add_argument('--vocab_path', default='/apdcephfs/share_1313228/home/haiwendiao/SGRAF-master/vocab/',
-    #                     help='Path to saved vocabulary json files.')
-    # parser.add_argument('--model_name', default='/apdcephfs/share_1313228/home/haiwendiao/SGRAF-master/runs/f30k_SGR/checkpoint',
-    #                     help='Path to save the model.')
-    # parser.add_argument('--logger_name', default='/apdcephfs/share_1313228/home/haiwendiao/SGRAF-master/runs/f30k_SGR/log',
-    #                     help='Path to save Tensorboard log.')
     parser.add_argument('--data_path', default='../../data',
                         help='path to datasets')
                         

@@ -34,7 +34,7 @@ savename = '_IOU_2.npy'
 
 for i in dataset:
     for j in set2:
-        bboxfull = np.load(url+i+j+name) # /glo_data/zengyueyang/muti/SCAN/glo_data/f30k_precomp/train_ims_bbx.npy_ims_bbx.npy
+        bboxfull = np.load(url+i+j+name) 
         size = len(bboxfull)
         print(size)
         Iou = np.zeros([size,36,36])
